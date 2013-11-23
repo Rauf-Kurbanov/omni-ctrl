@@ -61,7 +61,12 @@ private:
     int xw;
     int yw;
 
+    int gyrolast;
+    float alpha;
+
     matrix<float> Mt;
+    matrix<float> Rot;
     vector<float> cmd;
     vector<float> pwm;
+    vector<float> mov;
 };
