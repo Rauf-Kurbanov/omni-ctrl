@@ -63,6 +63,8 @@ void OmniRobot::init()
     movementMode = ROTATE_MODE;
     power = 20;
     pplus = 1;
+
+    gyrolast = brick.gyroscope()->read()[2];
 }
 
 void OmniRobot::gamepadPad(int pad, int vx, int vy)
@@ -92,7 +94,7 @@ void OmniRobot::gamepadButton(int button, int pressed)
         case 1: movementMode = ROTATE_MAX_MODE; break;
         case 2: movementMode = ROTATE_POINT_MODE; break;
         case 3: movementMode = ROTATE_MODE; break;
-        case 5: movementMode = ANDROID_MODE; period = 10; break;
+        case 5: movementMode = ANDROID_MODE; period = 20; break;
         }
         omniState = CONTROL_MODE;
         startControl();
@@ -159,13 +161,13 @@ void OmniRobot::omniControl()
 
 void OmniRobot::androidmode()
 {
-    qDebug("cmd: %f, %f, %f", cmd(0), cmd(1));
+    qDebug("cmd: %f, %f", cmd(0), cmd(1));
 
     QVector<int> temp = brick.gyroscope()->read();
-    alpha += (temp[0] - gyrolast) * period;
+    alpha += (temp[0] + gyrolast) * 0.5 * 0.001 * period;
 
-    float calpha = Cos(alpha);
-    float salpha = Sin(alpha);
+    float calpha = 0;// Cos(alpha);
+    float salpha = 0;//Sin(alpha);
     Rot(0,0) = calpha; Rot(0,1) = -salpha;
     Rot(1,0) = salpha; Rot(1,1) = calpha;
     vector<float> t = prod(Rot, cmd);
@@ -182,16 +184,12 @@ void OmniRobot::androidmode()
 
 void OmniRobot::brickPower()
 {
-    /*
-    int m1 = rt_SATURATE((int)pwm(2), -100, 100);
-    int m2 = rt_SATURATE((int)pwm(3), -100, 100);
-    int m3 = -rt_SATURATE((int)pwm(1), -100, 100);
-    int m4 = -rt_SATURATE((int)pwm(0), -100, 100);
+    int m1 = rt_SATURATE((int)pwm(0), -100, 100);
+    int m2 = rt_SATURATE((int)pwm(1), -100, 100);
+    int m4 = rt_SATURATE((int)pwm(2), -100, 100);
     brick.powerMotor("1")->setPower(m1);
     brick.powerMotor("2")->setPower(m2);
-    brick.powerMotor("3")->setPower(m3);
     brick.powerMotor("4")->setPower(m4);
-    */
 }
 
 void OmniRobot::rotate()
