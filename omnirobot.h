@@ -2,15 +2,11 @@
 
 #include <QObject>
 #include <QTimer>
-#include <boost/numeric/ublas/matrix.hpp>
-#include <boost/numeric/ublas/vector.hpp>
+#include <QMatrix3x3>
+#include <QVector3D>
 #include <trikControl/brick.h>
 
-const float xw = 0.165;
-const float yw = 0.132;
-
 using namespace trikControl;
-using namespace boost::numeric::ublas;
 
 class OmniRobot : public QObject
 {
@@ -19,15 +15,12 @@ public:
     explicit OmniRobot(QThread *guiThread);
 
 protected:
+    void init();
+
     void brickPower();
 
     void startControl();
     void androidmode();
-    void rotatepoint();
-    void rotatemax();
-    void rotate();
-
-    void init();
     
 signals:
     
@@ -54,19 +47,20 @@ private:
 
     Brick   brick;
     QTimer  timer;
-    int power;
-    int pplus;
 
-    int Dw;
-    int xw;
-    int yw;
+    qreal Dw;
+    qreal xw;
+    qreal yw;
 
     int gyrolast;
-    float alpha;
+    int gyroerror;
+    qreal alpha;
 
-    matrix<float> Mt;
-    matrix<float> Rot;
-    vector<float> cmd;
-    vector<float> pwm;
-    vector<float> mov;
+    QMatrix3x3 Mt;
+    QVector3D cmd;
+    QVector3D pwm;
+    //matrix<float> Rot;
+    //vector<float> cmd;
+    //vector<float> pwm;
+    //vector<float> mov;
 };

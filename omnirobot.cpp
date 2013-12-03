@@ -1,26 +1,22 @@
 #include <QDebug>
 
 #include "omnirobot.h"
-
+#include <QVector2D>
 #include <cmath>
-#include <linux/input.h>
 
-const float gyroConvConst = 838.736454707;
+const qreal gyroConvConst = 838.736454707;
 #define rt_SATURATE(sig,ll,ul)         (((sig) >= (ul)) ? (ul) : (((sig) <= (ll)) ? (ll) : (sig)) )
-const float c1 = sqrt(3) * 0.5;
-const float c2 = 0.5;
+const qreal c1 = sqrt(3) * 0.5;
+const qreal c2 = 0.5;
 
 OmniRobot::OmniRobot(QThread *guiThread):
     brick(*guiThread),
     gyrolast(0),
     alpha(0.0),
-    Mt(3,3),
-    Rot(2,2),
-    cmd(2),
-    pwm(3),
-    mov(3)
+    Mt(),
+    cmd()
 {
-    qDebug() << "INIT_MODE";
+    qDebug() << "OMNI_STARTS";
 
     init();
     connect(brick.gamepad(), SIGNAL(trikGamepad_button(int,int)), this, SLOT(gamepadButton(int, int)));
@@ -32,53 +28,49 @@ OmniRobot::OmniRobot(QThread *guiThread):
 
 void OmniRobot::init()
 {
-    period = 200;
-    xw = 75.0; //mm
-    yw = 75.0; //mm
-    Dw = 50.0; //mm
+    period = 1000;
+    xw = 110.0; //mm
+    yw = 110.0; //mm
+    Dw = 0.02; // 1/50mm
 
-    vector<float> u1 (2); u1(0) =   0; u1(1) =   1;
-    vector<float> u2 (2); u2(0) =  c1; u2(1) = -c2;
-    vector<float> u3 (2); u3(0) = -c1; u3(1) = -c2;
+    QVector2D u1(0.0, 1.0);
+    QVector2D u2(c1, -c2);
+    QVector2D u3(-1.0, 0.0);
 
-    vector<float> n1 (2); n1(0) =  -1; n1(1) =   0;
-    vector<float> n2 (2); n2(0) =  c2; n2(1) =  c1;
-    vector<float> n3 (2); n3(0) =  c1; n3(1) = -c2;
+    QVector2D n1(-1.0, 0.0);
+    QVector2D n2(c2, c1);
+    QVector2D n3(c1, -c2);
 
-    vector<float> b1 (2); b1(0) =     0; b1(1) =     yw;
-    vector<float> b2 (2); b2(0) = c1*xw; b2(1) = -c2*yw;
-    vector<float> b3 (2); b3(0) =-c1*xw; b3(1) = -c2*yw;
+    QVector2D b1(0.0, yw);
+    QVector2D b2(c1*xw, -c2*yw);
+    QVector2D b3(-c1*xw, -c2*yw);
 
-    Mt(0,0) = n1(0); Mt(0,1) = n1(1); Mt(0,2) = b1(0)*u1(0) + b1(1)*u1(1);
-    Mt(1,0) = n2(0); Mt(1,1) = n2(1); Mt(1,2) = b2(0)*u2(0) + b2(1)*u2(1);
-    Mt(2,0) = n3(0); Mt(2,1) = n3(1); Mt(2,2) = b3(0)*u3(0) + b3(1)*u3(1);
+    Mt(0,0) = n1.x(); Mt(0,1) = n1.y(); Mt(0,2) = b1.x()*u1.x() + b1.y()*u1.y();
+    Mt(1,0) = n2.x(); Mt(1,1) = n2.y(); Mt(1,2) = b2.x()*u2.x() + b2.y()*u3.y();
+    Mt(2,0) = n3.x(); Mt(2,1) = n3.y(); Mt(2,2) = b3.x()*u3.x() + b3.y()*u3.y();
 
-    Mt = -1 * Mt;
+    Mt *= -1.0;
 
-    cmd(0) = 0.0; cmd(1) = 0.0;
-    pwm(0) = 0.0; pwm(1) = 0.0; pwm(2) = 0.0;
-    mov(0) = 0.0; mov(1) = 0.0; mov(2) = 0.0;
+    pwm.setX(0.0); pwm.setY(0.0); pwm.setZ(0.0);
+    cmd.setX(0.0); cmd.setY(0.0); cmd.setZ(0.0);
 
     omniState = INIT_MODE;
     movementMode = ROTATE_MODE;
-    power = 20;
-    pplus = 1;
-
-    gyrolast = brick.gyroscope()->read()[2];
+    gyroerror = brick.gyroscope()->read()[2];
 }
 
 void OmniRobot::gamepadPad(int pad, int vx, int vy)
 {
     if (pad != 1) return;
-    cmd(0) = vx;
-    cmd(1) = vy;
+    cmd.setX((qreal)vx);
+    cmd.setY((qreal)vy);
 }
 
 void OmniRobot::gamepadPadUp(int pad)
 {
     if (pad != 1) return;
-    cmd(0) = 0.0;
-    cmd(1) = 0.0;
+    cmd.setX(0.0);
+    cmd.setY(0.0);
     brick.stop();
 }
 
@@ -142,13 +134,10 @@ void OmniRobot::omniControl()
     switch (movementMode)
     {
     case ROTATE_POINT_MODE:
-        rotatepoint();
         break;
     case ROTATE_MODE:
-        rotate();
         break;
     case ROTATE_MAX_MODE:
-        rotatemax();
         break;
     case ANDROID_MODE:
         androidmode();
@@ -161,18 +150,30 @@ void OmniRobot::omniControl()
 
 void OmniRobot::androidmode()
 {
-    qDebug("cmd: %f, %f", cmd(0), cmd(1));
+    pwm.setX(Mt(0,0)*cmd.x() + Mt(0,1)*cmd.y() + Mt(0,2)*cmd.z());
+    pwm.setY(Mt(1,0)*cmd.x() + Mt(1,1)*cmd.y() + Mt(1,2)*cmd.z());
+    pwm.setZ(Mt(2,0)*cmd.x() + Mt(2,1)*cmd.y() + Mt(2,2)*cmd.z());
 
-    QVector<int> temp = brick.gyroscope()->read();
-    alpha += (temp[0] + gyrolast) * 0.5 * 0.001 * period;
+    pwm *= 2.0 * 20.0 * Dw ;
 
-    float calpha = 0;// Cos(alpha);
+    //qDebug("pwm: %f, %f, %f", pwm.x(), pwm.y(), pwm.z());
+
+    brickPower();
+
+    int gyronew = brick.gyroscope()->read()[2];
+    alpha += (gyronew - gyrolast) * 0.001 * period;
+    gyrolast = gyronew;
+
+    qDebug("aplha: %f", alpha);
+    /*
+    float calpha = 0;//Cos(alpha);
     float salpha = 0;//Sin(alpha);
     Rot(0,0) = calpha; Rot(0,1) = -salpha;
     Rot(1,0) = salpha; Rot(1,1) = calpha;
     vector<float> t = prod(Rot, cmd);
-
-    mov(0) = t(0); mov(1) = t(0); mov(2) = 0.0;
+    */
+    /*
+    mov(0) = cmd(0); mov(1) = cmd(1); mov(2) = 0.0;
 
     pwm = prod(Mt, mov);
     pwm = pwm * 2.0 / Dw ;
@@ -180,43 +181,17 @@ void OmniRobot::androidmode()
     qDebug("pwm: %f, %f, %f", pwm(0), pwm(1), pwm(2));
 
     brickPower();
+    */
 }
 
 void OmniRobot::brickPower()
 {
-    int m1 = rt_SATURATE((int)pwm(0), -100, 100);
-    int m2 = rt_SATURATE((int)pwm(1), -100, 100);
-    int m4 = rt_SATURATE((int)pwm(2), -100, 100);
+
+    int m1 = rt_SATURATE((int)pwm.x(), -100, 100);
+    int m2 = rt_SATURATE((int)pwm.y(), -100, 100);
+    int m4 = rt_SATURATE((int)pwm.z(), -100, 100);
     brick.powerMotor("1")->setPower(m1);
     brick.powerMotor("2")->setPower(m2);
     brick.powerMotor("4")->setPower(m4);
-}
 
-void OmniRobot::rotate()
-{
-    if (power == 20)
-        pplus = 2;
-    if (power == 100)
-        pplus = -2;
-    power = power + pplus;
-
-    brick.powerMotor("1")->setPower(power);
-    brick.powerMotor("2")->setPower(power);
-    brick.powerMotor("3")->setPower(power);
-    brick.powerMotor("4")->setPower(power);
-}
-
-void OmniRobot::rotatepoint()
-{
-    brick.powerMotor("2")->setPower(100);
-    brick.powerMotor("3")->setPower(100);
-    brick.powerMotor("4")->setPower(100);
-}
-
-void OmniRobot::rotatemax()
-{
-    brick.powerMotor("1")->setPower(100);
-    brick.powerMotor("2")->setPower(100);
-    brick.powerMotor("3")->setPower(100);
-    brick.powerMotor("4")->setPower(100);
 }

@@ -1,6 +1,5 @@
 TRIKCONTROL_BINDIR = ../trikRuntime/bin/release
 TRIKCONTROL_DIR = ../trikRuntime/trikControl
-BOOST_DIR = ../../Downloads/boost_1_54_0
 
 QT       += core
 QT       += network
